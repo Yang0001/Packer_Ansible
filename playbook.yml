@@ -1,0 +1,63 @@
+hosts: localhost
+ connection: local
+ sudo: yes
+vars:   
+    Nginx_image: nginx:latest
+    Nginx_name: Nginx
+    Nginx_src_port: 80
+    Nginx_dest_port: 80
+    Nginx_src_vol: /var/www/nginx
+    Nginx_dest_vol: /etc/nginx
+ tasks:
+- name: Install list of packages
+  apt: name={{item}} state=installed
+ with_items:
+ — htop
+ — ctop
+ — screen
+ — unzip
+ — curl
+ — sudo
+ — mtr
+ — bash-completion
+ — tree
+ — colordiff
+ — ntp
+ — bwm-ng
+ — docker-compose
+ — apt-transport-https
+- name: Install docker
+  command: sudo apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D
+- name: Add deb repo
+  command: sudo touch /etc/apt/sources.list.d/docker.list
+- lineinfile: dest="/etc/apt/sources.list.d/docker.list" line="{{item}}"
+  with_items:
+    - "deb https://apt.dockerproject.org/repo ubuntu-trusty main"
+- name: Apt update
+  apt: update_cache=yes
+- apt: name=docker-engine state=present
+- name: Add user mod
+  command: sudo usermod -aG docker {{remote_user}}
+- name: Add user mod
+  command: sudo usermod -aG docker {{action_user}}
+- name: Apt update
+ command: sudo apt-get update 
+- name: Deploy and start Nginx Docker Container
+        docker_container:
+          name: "{{ Nginx_name }}"
+          image: "{{ Nginx_image }}"
+          state: started
+          restart_policy: always
+          ports:
+           - "{{ Nginx_src_port }}:{{ Nginx_dest_port }}"
+          volumes: 
+           - "{{ Nginx_src_vol }}:{{ Nginx_dest_vol }}:rw"                
+- name: test 1.Run this command to test the healthiness of the Nginx container
+          shell: docker ps | grep -E "{{Nginx_image}}".*Up && echo "service running" \|| 
+                 echo "service down" 
+- name: test 2. Fetch the output of the nginx container's default http page    
+          shell: curl --fail "http://localhost:{{ Nginx_src_port }}/" > nginxPage.html
+- name: test 3. Print out the word that occurs most on the page
+          shell: sed -e 's/<[^>]*>//g' -e '/body {/,/}/g' -e 's/[\.,!;]/ /g' nginxPage.html \|
+                 awk '{for(i=1;i<=NF;i++)array[$i]++;}END{for(i in array) print array[i],i}' \|
+                 sort -nr
